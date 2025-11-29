@@ -1,3 +1,4 @@
+import subprocess
 import pyshark
 import sys
 
@@ -10,38 +11,16 @@ def sql_injection_monitor(arg_interface, arg_port):
                                         display_filter=f'tcp.port=={arg_port}',
                                         decode_as={f'tcp.port=={arg_port}':'http'})
         for packet in capture:
-
-            # protocol = packet.transport_layer
-            # print(f"{protocol}")
-
-            # source_address = packet.ip.src
-            # print(f"{source_address}")
-
-            # source_port = packet[packet.transport_layer].srcport
-            # print(f"{source_port}")
-
-            # destination_address = packet.ip.dst
-            # print(f"{destination_address}")
-
-            # destination_port = packet[packet.transport_layer].dstport
-            # print(f"{destination_port}") 
-
-            # packet_time = packet.sniff_time
-            # print(f"{packet_time}")
-
-            # packet_timestamp = packet.sniff_timestamp
-            # print(f"{packet_timestamp}")
-
-            if hasattr(packet.tcp, 'payload'):      # check if packet as payload
-                if(payload_has_injection(packet.tcp.payload)):
-                    block_ip_source(packet.ip.src)
-
+            if hasattr(packet.tcp, 'payload'):                  # check if packet as payload
+                if(payload_has_injection(packet.tcp.payload)):  # chek payload for SQL injection patterns
+                    block_packet_source_ip(packet.ip.src)       # if payload has SQL injection, block sorce ip traffic at iptrables      
 
     except KeyboardInterrupt:
         print(f"\nMonitoramento finalizado")
     except Exception as e:
         print(f"Erro: {e}")
         print("Verifique se a interface e porta são válidas e se você tem permissões para capturer pacotes")
+
 
 def payload_has_injection(payload):
             
@@ -60,10 +39,19 @@ def payload_has_injection(payload):
                      return True
                 
 
-def block_ip_source(source_ip):
-
-
+def block_packet_source_ip(source_ip):
+        try:
+            # Block incoming traffic from source_ip
+            subprocess.run(['sudo', 'iptables', '-A', 'INPUT', '-s', source_ip, '-j', 'DROP'], check=True)
+            print(f"IP {source_ip} blocked successfully!")
             
+            # Block outgoing traffic to source_ip
+            subprocess.run(['sudo', 'iptables', '-A', 'OUTPUT', '-d', source_ip, '-j', 'DROP'], check=True)
+            print(f"Outgoing traffic to IP {source_ip} also blocked!")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error blocking IP {source_ip}: {e}")    
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
